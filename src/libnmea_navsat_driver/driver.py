@@ -41,11 +41,62 @@ from tf_transformations import quaternion_from_euler
 from libnmea_navsat_driver.checksum_utils import check_nmea_checksum
 from libnmea_navsat_driver import parser
 
+from sensor_msgs.msg import Imu 
+import numpy as np
+from std_msgs.msg import Float32
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from libnmea_navsat_driver import coor_conv
+from ublox_msgs.msg import NavPVT
+from autoware_sensing_msgs.msg import GnssInsOrientationStamped
+
+
+def eulerFromQuaternion(x, y, z, w):
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll_x = math.atan2(t0, t1)
+
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch_y = math.asin(t2)
+
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    yaw_z = math.atan2(t3, t4)
+
+    return roll_x, pitch_y, yaw_z
+
+def get_quaternion_from_euler(roll, pitch, yaw):
+    """
+    Convert an Euler angle to a quaternion.
+
+    Input
+    :param roll: The roll (rotation around x-axis) angle in radians.
+    :param pitch: The pitch (rotation around y-axis) angle in radians.
+    :param yaw: The yaw (rotation around z-axis) angle in radians.
+    Output
+    :return qx, qy, qz, qw: The orientation in quaternion [x,y,z,w] format
+    """
+    qx = np.sin(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) - np.cos(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
+    qy = np.cos(roll/2) * np.sin(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.cos(pitch/2) * np.sin(yaw/2)
+    qz = np.cos(roll/2) * np.cos(pitch/2) * np.sin(yaw/2) - np.sin(roll/2) * np.sin(pitch/2) * np.cos(yaw/2)
+    qw = np.cos(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
+
+    return [qx, qy, qz, qw]
 
 class Ros2NMEADriver(Node):
     def __init__(self):
         super().__init__('nmea_navsat_driver')
-
+        
+        # CHC -------------
+        self.imu_pub = self.create_publisher(Imu, 'chc/imu', 10)
+        self.pub_pitch = self.create_publisher(Float32, 'chc/pitch', 2)
+        self.pub_heading = self.create_publisher(Float32, 'chc/heading', 2)
+        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, 'chc/pose', 10)
+        self.ublox_navpvt_pub = self.create_publisher(NavPVT, "chc/navpvt", 10)
+        self.pub_orientation = self.create_publisher(GnssInsOrientationStamped, 'chc/autoware_orientation', 2)
+        # CHC -------------
+        
         self.fix_pub = self.create_publisher(NavSatFix, 'fix', 10)
         self.vel_pub = self.create_publisher(TwistStamped, 'vel', 10)
         self.heading_pub = self.create_publisher(QuaternionStamped, 'heading', 10)
@@ -269,6 +320,120 @@ class Ros2NMEADriver(Node):
                 current_heading.quaternion.z = q[2]
                 current_heading.quaternion.w = q[3]
                 self.heading_pub.publish(current_heading)
+        elif 'CHC' in parsed_sentence:
+            data = parsed_sentence['CHC']
+            float_msg = Float32()
+            imu_msg = Imu()
+            pose_msg = PoseWithCovarianceStamped()
+            try:
+                # if self.pub_heading.get_subscription_count() > 0:
+                float_msg.data = data["heading"]
+                self.pub_heading.publish(float_msg)
+                    
+                if self.pub_pitch.get_subscription_count() > 0:
+                    float_msg.data = data["pitch"]
+                    self.pub_pitch.publish(float_msg)
+                
+                if self.imu_pub.get_subscription_count() > 0:
+                    imu_msg.header.stamp = self.get_clock().now().to_msg()
+                    imu_msg.header.frame_id = frame_id
+                    # orientation
+                    heading = math.radians(90.0-data['heading'])
+                    pitch = math.radians(data['pitch'])
+                    roll = math.radians(data['roll'])
+                    [qx, qy, qz, qw] = get_quaternion_from_euler(roll, pitch, heading)
+                    imu_msg.orientation.x = qx
+                    imu_msg.orientation.y = qy
+                    imu_msg.orientation.z = qz
+                    imu_msg.orientation.w = qw
+                    # linear_acceleration
+                    imu_msg.linear_acceleration.x = data["linear_acceleration_y"] * 9.80665
+                    imu_msg.linear_acceleration.y = -data["linear_acceleration_x"]* 9.80665
+                    imu_msg.linear_acceleration.z = data["linear_acceleration_z"]* 9.80665
+                    # angular_velocity
+                    # angular velocity the coordinate of imu is y-front x-right z-up, 
+                    # so it has to be converted to right-handed coordinate
+                    imu_msg.angular_velocity.x = math.radians(data["angular_velocity_y"])
+                    imu_msg.angular_velocity.y =  math.radians(-data["angular_velocity_x"])
+                    imu_msg.angular_velocity.z =  math.radians(data["angular_velocity_z"])
+                    imu_msg.angular_velocity_covariance[0] = 0.001
+                    imu_msg.angular_velocity_covariance[4] = 0.001
+                    imu_msg.angular_velocity_covariance[8] = 0.001
+                    
+                    self.imu_pub.publish(imu_msg)
+                    
+                if self.pose_pub.get_subscription_count() > 0:
+                    pose_msg.header.stamp = self.get_clock().now().to_msg()
+                    pose_msg.header.frame_id = frame_id
+                    # pose msg
+                    # pose.position
+                    x, y, z = coor_conv.lla2ecef_simple(data['latitude'], data['longitude'], data['altitude'])
+                    pose_msg.pose.pose.position.x = x
+                    pose_msg.pose.pose.position.y = y
+                    pose_msg.pose.pose.position.z = z
+                    # pose.orientation
+                    heading = math.radians(90.0-data['heading'])
+                    pitch = math.radians(data['pitch'])
+                    roll = math.radians(data['roll'])
+                    [qx, qy, qz, qw] = get_quaternion_from_euler(roll, pitch, heading)
+                    pose_msg.pose.pose.orientation.x = qx
+                    pose_msg.pose.pose.orientation.y = qy
+                    pose_msg.pose.pose.orientation.z = qz
+                    pose_msg.pose.pose.orientation.w = qw
+                    
+                    self.pose_pub.publish(pose_msg)
+                
+                if self.ublox_navpvt_pub.get_subscription_count() > 0:
+                    satellite_status = int(data['fix_valid']/10)
+                    system_status =  int(data['fix_valid'])%10
+                    navpvt_msg = NavPVT()
+                    if satellite_status == 3: # 纯惯导模式
+                        navpvt_msg.fix_type = NavPVT.FIX_TYPE_DEAD_RECKONING_ONLY
+                    elif satellite_status == 2: # 组合导航模式
+                        navpvt_msg.fix_type = NavPVT.FIX_TYPE_GNSS_DEAD_RECKONING_COMBINED
+                    else :
+                        if satellite_status == 0 :
+                            navpvt_msg.fix_type = NavPVT.FIX_TYPE_NO_FIX
+                        elif satellite_status == 6 :
+                            navpvt_msg.fix_type = NavPVT.FIX_TYPE_3D
+                        else :
+                            navpvt_msg.fix_type = NavPVT.FIX_TYPE_2D
+                        
+                    navpvt_msg.heading = int(math.degrees(data['heading'])*100000)
+                    navpvt_msg.lon = int(data['latitude']* 1e7)
+                    navpvt_msg.lat = int(data['longitude']* 1e7)
+                    navpvt_msg.height = int(data['altitude'])*1000  # mm
+                    navpvt_msg.vel_n = int(data['linear_velocity_north']) * 1000   # mm/s
+                    navpvt_msg.vel_e = int(data['linear_velocity_east']) * 1000 
+                    navpvt_msg.vel_d = int(data['linear_velocity_z']) * 1000 
+                    navpvt_msg.g_speed = int(data['linear_velocity_vehihle']) * 1000 
+                    
+                    self.ublox_navpvt_pub.publish(navpvt_msg)
+                
+                if self.pub_orientation.get_subscription_count() > 0:
+                    orientation_msg = GnssInsOrientationStamped()
+                    orientation_msg.header.stamp = self.get_clock().now().to_msg()
+                    orientation_msg.header.frame_id = frame_id
+                    
+                    # orientation msg of autoware
+                    # orientation
+                    heading = math.radians(90.0-data['heading'])
+                    pitch = math.radians(data['pitch'])
+                    roll = math.radians(data['roll'])
+                    [qx, qy, qz, qw] = get_quaternion_from_euler(roll, pitch, heading)
+                    orientation_msg.orientation.orientation.x = qx
+                    orientation_msg.orientation.orientation.y = qy
+                    orientation_msg.orientation.orientation.z = qz
+                    orientation_msg.orientation.orientation.w = qw
+                    
+                    orientation_msg.orientation.rmse_rotation_x = 0.001745329 # 0.1 degree
+                    orientation_msg.orientation.rmse_rotation_y = 0.001745329 # 0.1 degree 
+                    orientation_msg.orientation.rmse_rotation_z = 0.001745329 # 0.1 degree
+                    
+                    self.pub_orientation.publish(orientation_msg)
+            
+            except UnicodeDecodeError as err:
+                self.get_logger().warn("UnicodeDecodeError: {0}".format(err))
         else:
             return False
         return True

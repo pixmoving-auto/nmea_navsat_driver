@@ -11,3 +11,4 @@ install
 .idea
 dist
 nmea_navsat_driver.egg-info/
+__pycache__

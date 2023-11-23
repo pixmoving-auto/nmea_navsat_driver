@@ -139,6 +139,33 @@ parse_maps = {
     "VTG": [
         ("true_course", convert_deg_to_rads, 1),
         ("speed", convert_knots_to_mps, 5)
+    ],
+    "CHC": [
+        ("gps_week", int, 1),
+        ("gps_second", safe_float, 2),
+        ("heading", safe_float, 3),
+        ("pitch", safe_float, 4),
+        ("roll", safe_float, 5),
+        ("angular_velocity_x", safe_float, 6),    #°/s
+        ("angular_velocity_y", safe_float, 7),    #°/s
+        ("angular_velocity_z", safe_float, 8),    #°/s
+        ("linear_acceleration_x", safe_float, 9), # g=9.806m/s²
+        ("linear_acceleration_y", safe_float, 10),# g=9.806m/s²
+        ("linear_acceleration_z", safe_float, 11),# g=9.806m/s²
+        
+        ("latitude", safe_float, 12),             # ° 
+        ("longitude", safe_float, 13),            # ° 
+        ("altitude", safe_float, 14),             # ° 
+        ("linear_velocity_east", safe_float, 15), # m/s
+        ("linear_velocity_north", safe_float, 16),# m/s
+        ("linear_velocity_z", safe_float, 17),    # m/s
+        ("linear_velocity_vehihle", safe_float, 18),    # m/s
+        
+        ("main_antenna_1_satellite_count", int, 19),    # m/s
+        ("auxiliary_antenna_2_satellite_count", int, 20),    # m/s
+        
+        ("fix_valid", int, 21),
+        ("age", int, 22),
     ]
 }
 

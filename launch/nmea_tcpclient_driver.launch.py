@@ -18,20 +18,30 @@ import os
 import sys
 
 from ament_index_python.packages import get_package_share_directory
-from launch import LaunchDescription, LaunchIntrospector, LaunchService
+from launch import LaunchDescription, LaunchIntrospector, LaunchService, substitutions
 from launch_ros import actions
-
+from launch.actions import DeclareLaunchArgument
 
 def generate_launch_description():
     """Generate a launch description for a single tcpclient driver."""
     config_file = os.path.join(get_package_share_directory("nmea_navsat_driver"), "config", "nmea_tcpclient_driver.yaml")
+    logger = substitutions.LaunchConfiguration("log_level")
     driver_node = actions.Node(
         package='nmea_navsat_driver',
         executable='nmea_tcpclient_driver',
         output='screen',
-        parameters=[config_file])
-
-    return LaunchDescription([driver_node])
+        parameters=[{
+            "ip": "192.168.4.45",
+            "port": 9904,
+            "buffer_size": 4096,
+        }],
+        arguments=['--ros-args', '--log-level', logger])
+    argument = DeclareLaunchArgument(
+            "log_level",
+            default_value=["error"],
+            description="Logging level"
+            )
+    return LaunchDescription([argument, driver_node])
 
 
 def main(argv):
