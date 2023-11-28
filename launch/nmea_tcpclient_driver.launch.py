@@ -34,6 +34,7 @@ def generate_launch_description():
             "ip": "192.168.4.45",
             "port": 9904,
             "buffer_size": 4096,
+            "frame_id": "gnss",
         }],
         arguments=['--ros-args', '--log-level', logger])
     argument = DeclareLaunchArgument(
