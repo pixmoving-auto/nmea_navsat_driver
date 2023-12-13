@@ -25,13 +25,13 @@ from launch.actions import DeclareLaunchArgument
 def generate_launch_description():
     """Generate a launch description for a single tcpclient driver."""
     config_file = os.path.join(get_package_share_directory("nmea_navsat_driver"), "config", "nmea_tcpclient_driver.yaml")
-    logger = substitutions.LaunchConfiguration("log_level")
+    # logger = substitutions.LaunchConfiguration("log_level")
     driver_node = actions.Node(
         package='nmea_navsat_driver',
         executable='nmea_tcpclient_driver',
         output='screen',
         parameters=[{
-            "ip": "192.168.4.45",
+            "ip": "192.168.1.110",
             "port": 9904,
             "buffer_size": 4096,
             "frame_id": "gnss",
@@ -42,7 +42,9 @@ def generate_launch_description():
             default_value=["error"],
             description="Logging level"
             )
-    return LaunchDescription([argument, driver_node])
+    return LaunchDescription([
+                argument,
+                driver_node])
 
 
 def main(argv):
