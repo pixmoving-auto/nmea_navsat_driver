@@ -25,7 +25,7 @@ from launch.actions import DeclareLaunchArgument
 def generate_launch_description():
     """Generate a launch description for a single tcpclient driver."""
     config_file = os.path.join(get_package_share_directory("nmea_navsat_driver"), "config", "nmea_tcpclient_driver.yaml")
-    # logger = substitutions.LaunchConfiguration("log_level")
+    logger = substitutions.LaunchConfiguration("log_level")
     driver_node = actions.Node(
         package='nmea_navsat_driver',
         executable='nmea_tcpclient_driver',
