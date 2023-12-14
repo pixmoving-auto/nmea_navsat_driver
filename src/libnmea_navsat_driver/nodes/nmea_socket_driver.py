@@ -73,12 +73,24 @@ def main(args=None):
             sys.exit(1)
 
         # recv-loop: When we're connected, keep receiving stuff until that fails
+        partial = ""
         while rclpy.ok():
             try:
                 data, remote_address = socket_.recvfrom(buffer_size)
 
                 # strip the data
-                data_list = data.decode("ascii").strip().split("\n")
+                # data_list = data.decode("ascii").strip().split("\n")
+                partial += data.decode("ascii")
+
+                # strip the data
+                lines = partial.splitlines()
+                if partial.endswith('\n'):
+                    data_list = lines
+                    partial = ""
+                else:
+                    data_list = lines[:-1]
+                    partial = lines[-1]
+                    
 
                 for data in data_list:
 
