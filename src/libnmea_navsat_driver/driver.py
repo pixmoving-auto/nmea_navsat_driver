@@ -356,9 +356,9 @@ class Ros2NMEADriver(Node):
                     imu_msg.angular_velocity.x = math.radians(data["angular_velocity_y"])
                     imu_msg.angular_velocity.y =  math.radians(-data["angular_velocity_x"])
                     imu_msg.angular_velocity.z =  math.radians(data["angular_velocity_z"])
-                    imu_msg.angular_velocity_covariance[0] = 0.001
-                    imu_msg.angular_velocity_covariance[4] = 0.001
-                    imu_msg.angular_velocity_covariance[8] = 0.001
+                    imu_msg.angular_velocity_covariance[0] = 0.01
+                    imu_msg.angular_velocity_covariance[4] = 0.01
+                    imu_msg.angular_velocity_covariance[8] = 0.01
                     
                     self.imu_pub.publish(imu_msg)
                     

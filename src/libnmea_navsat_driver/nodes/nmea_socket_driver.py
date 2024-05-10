@@ -82,6 +82,9 @@ def main(args=None):
                 # data_list = data.decode("ascii").strip().split("\n")
                 partial += data.decode("ascii")
 
+                if not partial:
+                    continue
+                
                 # strip the data
                 lines = partial.splitlines()
                 if partial.endswith('\n'):
