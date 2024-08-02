@@ -30,6 +30,8 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+# -*- coding: utf-8 -*-
+
 """Parsing functions for NMEA sentence strings."""
 
 import re
@@ -258,6 +260,33 @@ parse_maps = {
     "VTG": [
         ("true_course", safe_float, 1),
         ("speed", convert_knots_to_mps, 5)
+    ],
+    "CHC": [
+        ("gps_week", int, 1),
+        ("gps_second", safe_float, 2),
+        ("heading", safe_float, 3),
+        ("pitch", safe_float, 4),
+        ("roll", safe_float, 5),
+        ("angular_velocity_x", safe_float, 6),    #degree/s
+        ("angular_velocity_y", safe_float, 7),    #degree/s
+        ("angular_velocity_z", safe_float, 8),    #degree/s
+        ("linear_acceleration_x", safe_float, 9), # g=9.806m/ss
+        ("linear_acceleration_y", safe_float, 10),# g=9.806m/ss
+        ("linear_acceleration_z", safe_float, 11),# g=9.806m/ss
+        
+        ("latitude", safe_float, 12),             # degree 
+        ("longitude", safe_float, 13),            # degree 
+        ("altitude", safe_float, 14),             # degree 
+        ("linear_velocity_east", safe_float, 15), # m/s
+        ("linear_velocity_north", safe_float, 16),# m/s
+        ("linear_velocity_z", safe_float, 17),    # m/s
+        ("linear_velocity_vehihle", safe_float, 18),    # m/s
+        
+        ("main_antenna_1_satellite_count", int, 19),    # m/s
+        ("auxiliary_antenna_2_satellite_count", int, 20),    # m/s
+        
+        ("fix_valid", int, 21),
+        ("age", int, 22),
     ]
 }
 """A dictionary that maps from sentence identifier string (e.g. "GGA") to a list of tuples.

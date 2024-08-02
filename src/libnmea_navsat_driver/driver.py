@@ -38,11 +38,45 @@ import rospy
 
 from sensor_msgs.msg import NavSatFix, NavSatStatus, TimeReference
 from geometry_msgs.msg import TwistStamped
+from sensor_msgs.msg import Imu
+import numpy as np
 
 from libnmea_navsat_driver.checksum_utils import check_nmea_checksum
 import libnmea_navsat_driver.parser
 
+def eulerFromQuaternion(x, y, z, w):
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll_x = math.atan2(t0, t1)
 
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch_y = math.asin(t2)
+
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    yaw_z = math.atan2(t3, t4)
+
+    return roll_x, pitch_y, yaw_z
+
+def get_quaternion_from_euler(roll, pitch, yaw):
+    """
+    Convert an Euler angle to a quaternion.
+
+    Input
+    :param roll: The roll (rotation around x-axis) angle in radians.
+    :param pitch: The pitch (rotation around y-axis) angle in radians.
+    :param yaw: The yaw (rotation around z-axis) angle in radians.
+    Output
+    :return qx, qy, qz, qw: The orientation in quaternion [x,y,z,w] format
+    """
+    qx = np.sin(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) - np.cos(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
+    qy = np.cos(roll/2) * np.sin(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.cos(pitch/2) * np.sin(yaw/2)
+    qz = np.cos(roll/2) * np.cos(pitch/2) * np.sin(yaw/2) - np.sin(roll/2) * np.sin(pitch/2) * np.cos(yaw/2)
+    qw = np.cos(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
+
+    return [qx, qy, qz, qw]
 class RosNMEADriver(object):
     """ROS driver for NMEA GNSS devices."""
 
@@ -66,6 +100,7 @@ class RosNMEADriver(object):
             ~epe_quality9 (float): Value to use for default EPE quality for fix type 9. (default 3.0)
         """
         self.fix_pub = rospy.Publisher('fix', NavSatFix, queue_size=1)
+        self.imu_pub = rospy.Publisher('imu', Imu, queue_size=1)
         self.vel_pub = rospy.Publisher('vel', TwistStamped, queue_size=1)
         self.use_GNSS_time = rospy.get_param('~use_GNSS_time', False)
         if not self.use_GNSS_time:
@@ -243,6 +278,34 @@ class RosNMEADriver(object):
                 current_vel.twist.linear.y = data['speed'] * \
                     math.cos(data['true_course'])
                 self.vel_pub.publish(current_vel)
+        elif 'CHC' in parsed_sentence:
+            data = parsed_sentence['CHC']
+            imu_msg = Imu()
+            imu_msg.header.stamp = current_time
+            imu_msg.header.frame_id = frame_id
+            # orientation
+            heading = math.radians(90.0-data['heading'])
+            pitch = math.radians(data['pitch'])
+            roll = math.radians(data['roll'])
+            [qx, qy, qz, qw] = get_quaternion_from_euler(roll, pitch, heading)
+            imu_msg.orientation.x = qx
+            imu_msg.orientation.y = qy
+            imu_msg.orientation.z = qz
+            imu_msg.orientation.w = qw
+            # linear_acceleration
+            imu_msg.linear_acceleration.x = data["linear_acceleration_y"] * 9.80665
+            imu_msg.linear_acceleration.y = -data["linear_acceleration_x"]* 9.80665
+            imu_msg.linear_acceleration.z = data["linear_acceleration_z"]* 9.80665
+            # angular_velocity
+            # angular velocity the coordinate of imu is y-front x-right z-up, 
+            # so it has to be converted to right-handed coordinate
+            imu_msg.angular_velocity.x = math.radians(data["angular_velocity_y"])
+            imu_msg.angular_velocity.y =  math.radians(-data["angular_velocity_x"])
+            imu_msg.angular_velocity.z =  math.radians(data["angular_velocity_z"])
+            imu_msg.angular_velocity_covariance[0] = 0.01
+            imu_msg.angular_velocity_covariance[4] = 0.01
+            imu_msg.angular_velocity_covariance[8] = 0.01
+            self.imu_pub.publish(imu_msg)
         else:
             return False
 
