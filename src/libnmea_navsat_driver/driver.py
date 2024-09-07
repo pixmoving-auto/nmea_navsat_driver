@@ -42,6 +42,7 @@ from libnmea_navsat_driver.checksum_utils import check_nmea_checksum
 from libnmea_navsat_driver import parser
 
 from sensor_msgs.msg import Imu 
+from std_msgs.msg import UInt8
 import numpy as np
 from std_msgs.msg import Float32
 from geometry_msgs.msg import PoseWithCovarianceStamped
@@ -95,6 +96,8 @@ class Ros2NMEADriver(Node):
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, 'chc/pose', 10)
         self.ublox_navpvt_pub = self.create_publisher(NavPVT, "chc/navpvt", 10)
         self.pub_orientation = self.create_publisher(GnssInsOrientationStamped, 'chc/autoware_orientation', 2)
+        self.pub_antenna0 = self.create_publisher(UInt8, 'chc/main_antenna_satellite_count', 2)  # 主天线 1 卫星数
+        self.pub_antenna1 = self.create_publisher(UInt8, 'chc/auxiliary_antenna_satellite_count', 2)  # # 副天线 2 卫星数
         # CHC -------------
         
         self.fix_pub = self.create_publisher(NavSatFix, 'fix', 10)
@@ -325,6 +328,9 @@ class Ros2NMEADriver(Node):
             float_msg = Float32()
             imu_msg = Imu()
             pose_msg = PoseWithCovarianceStamped()
+            antenna0_count_msg = UInt8()
+            antenna1_count_msg = UInt8()
+            
             try:
                 # if self.pub_heading.get_subscription_count() > 0:
                 float_msg.data = data["heading"]
@@ -431,7 +437,11 @@ class Ros2NMEADriver(Node):
                     orientation_msg.orientation.rmse_rotation_z = 0.001745329 # 0.1 degree
                     
                     self.pub_orientation.publish(orientation_msg)
-            
+                # 发布卫星搜星数量
+                antenna0_count_msg.data = data['main_antenna_1_satellite_count']
+                antenna1_count_msg.data = data["auxiliary_antenna_2_satellite_count"]
+                self.pub_antenna0.publish(antenna0_count_msg)
+                self.pub_antenna1.publish(antenna1_count_msg)
             except UnicodeDecodeError as err:
                 self.get_logger().warn("UnicodeDecodeError: {0}".format(err))
         else:
