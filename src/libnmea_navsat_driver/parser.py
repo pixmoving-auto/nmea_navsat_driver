@@ -145,31 +145,32 @@ parse_maps = {
         ("speed", convert_knots_to_mps, 5)
     ],
     "CHC": [
-        ("gps_week", int, 1),
-        ("gps_second", safe_float, 2),
-        ("heading", safe_float, 3),
-        ("pitch", safe_float, 4),
-        ("roll", safe_float, 5),
-        ("angular_velocity_x", safe_float, 6),    #°/s
-        ("angular_velocity_y", safe_float, 7),    #°/s
-        ("angular_velocity_z", safe_float, 8),    #°/s
-        ("linear_acceleration_x", safe_float, 9), # g=9.806m/s²
-        ("linear_acceleration_y", safe_float, 10),# g=9.806m/s²
-        ("linear_acceleration_z", safe_float, 11),# g=9.806m/s²
+        ("gps_week", int, 1),          # 自 1980-1-6 至当前的星期数(GPS 时间)
+        ("gps_second", safe_float, 2), # 自本周日 0:00:00 至当前的秒数(GPS 时间)
+        ("heading", safe_float, 3),    # 偏航角（0 至 359.99),单位度
+        ("pitch", safe_float, 4),      # 俯仰角（-90 至 90),单位度
+        ("roll", safe_float, 5),       # 横滚角（-180 至 180),单位度
+        ("angular_velocity_x", safe_float, 6),    # 角速度 X 轴
+        ("angular_velocity_y", safe_float, 7),    # 角速度 Y 轴
+        ("angular_velocity_z", safe_float, 8),    # 角速度 Z 轴
+        ("linear_acceleration_x", safe_float, 9), # 加速度 X 轴
+        ("linear_acceleration_y", safe_float, 10),# 加速度 Y 轴
+        ("linear_acceleration_z", safe_float, 11),# 加速度 Z 轴
         
-        ("latitude", safe_float, 12),             # ° 
-        ("longitude", safe_float, 13),            # ° 
-        ("altitude", safe_float, 14),             # ° 
-        ("linear_velocity_east", safe_float, 15), # m/s
-        ("linear_velocity_north", safe_float, 16),# m/s
-        ("linear_velocity_z", safe_float, 17),    # m/s
-        ("linear_velocity_vehihle", safe_float, 18),    # m/s
+        ("latitude", safe_float, 12),             # 纬度(-90°至90°),单位度
+        ("longitude", safe_float, 13),            # 经度(-180°至180°),单位度
+        ("altitude", safe_float, 14),             # 高度，单位（米）
+        ("linear_velocity_east", safe_float, 15), # 东向速度，m/s 
+        ("linear_velocity_north", safe_float, 16),# 北向速度，m/s
+        ("linear_velocity_z", safe_float, 17),    # 天向速度 m/s
+        ("linear_velocity_vehihle", safe_float, 18),    #  车辆速度 m/s
         
-        ("main_antenna_1_satellite_count", int, 19),    # m/s
-        ("auxiliary_antenna_2_satellite_count", int, 20),    # m/s
+        ("main_antenna_1_satellite_count", int, 19),    # 主天线 1 卫星数
+        ("auxiliary_antenna_2_satellite_count", int, 20),    # 副天线 2 卫星数
         
-        ("fix_valid", int, 21),
-        ("age", int, 22),
+        ("fix_valid", int, 21), # 系统状态 0-9
+        ("age", int, 22), # 差分延时
+        ("warming", int, 23), # 警告信息
     ]
 }
 
