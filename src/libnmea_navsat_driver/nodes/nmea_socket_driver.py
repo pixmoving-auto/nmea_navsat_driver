@@ -70,7 +70,9 @@ def main(args=None):
             socket_.settimeout(timeout)
         except socket.error as exc:
             driver.get_logger().error("Caught exception socket.error when setting up socket: %s" % exc)
-            sys.exit(1)
+            socket_.settimeout(timeout)
+            continue
+            # sys.exit(1)
 
         # recv-loop: When we're connected, keep receiving stuff until that fails
         partial = ""
