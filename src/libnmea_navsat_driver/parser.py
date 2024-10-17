@@ -170,7 +170,6 @@ parse_maps = {
         
         ("fix_valid", int, 21), # 系统状态 0-9
         ("age", int, 22), # 差分延时
-        ("warming", int, 23), # 警告信息
     ]
 }
 
