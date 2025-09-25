@@ -64,11 +64,16 @@ def convert_latitude(field):
 
 
 def convert_longitude(field):
-    degree = safe_float(field[-len(field):-11])
-    minute = safe_float(field[-11:-1])
-    if(degree < 0):
-        minute = -minute
-    return degree + minute / 60.0
+    # NMEA longitude is formatted as dddmm.mmmm
+    # Convert to decimal degrees without applying the sign.
+    # Sign will be handled by the E/W direction field in the caller.
+    if not field:
+        return safe_float(field)
+    degrees_part = field[0:3]
+    minutes_part = field[3:]
+    degrees = safe_float(degrees_part)
+    minutes = safe_float(minutes_part)
+    return degrees + minutes / 60.0
 
 
 def convert_time(nmea_utc):
@@ -178,8 +183,9 @@ parse_maps = {
         ("age", int, 22), # 差分延时
     ], 
 
+    # ADCU温度和加速度计数据
     "TMSENMSG": [
-        ("timestamp", int, 2),                      # 时间戳
+        ("timestamp", int, 2),                      # 启动开始计算时间戳(秒)
         ("temp", safe_float, 3),                    # 温度（单位：°C）
         ("angular_velocity_x", safe_float, 5),      # 角速度 X 轴   （硬件 y -> 逻辑 x）
         ("angular_velocity_y", safe_float, 4),      # 角速度 Y 轴   （硬件 x -> 逻辑 y）

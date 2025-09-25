@@ -90,7 +90,7 @@ class Ros2NMEADriver(Node):
         super().__init__('nmea_navsat_driver')
 
         # ACU -------------
-        self.temperature_pub = self.create_publisher(Temperature, '/acu/imu/temp', 10)
+        self.temperature_pub = self.create_publisher(Temperature, '/adcu/imu/temp', 1)
         
         # CHC -------------
         self.imu_pub = self.create_publisher(Imu, 'chc/imu', 10)
@@ -231,7 +231,8 @@ class Ros2NMEADriver(Node):
             current_fix.longitude = longitude
 
             # Altitude is above ellipsoid, so adjust for mean-sea-level
-            altitude = data['altitude'] + data['mean_sea_level']
+            # altitude = data['altitude'] + data['mean_sea_level']
+            altitude = data['altitude']
             current_fix.altitude = altitude
 
             # use default epe std_dev unless we've received a GST sentence with epes
@@ -493,7 +494,7 @@ class Ros2NMEADriver(Node):
 
     """Helper method for getting the frame_id with the correct TF prefix"""
     def get_frame_id(self):
-        frame_id = self.declare_parameter('frame_id', 'gps').value
+        frame_id = self.declare_parameter('frame_id', 'gnss').value
         prefix = self.declare_parameter('tf_prefix', '').value
         if len(prefix):
             return '%s/%s' % (prefix, frame_id)
