@@ -89,7 +89,7 @@ class Ros2NMEADriver(Node):
     def __init__(self):
         super().__init__('nmea_navsat_driver')
 
-        # ACU -------------
+        # 优控 ADCU A06 IMU 温度-------------
         self.temperature_pub = self.create_publisher(Temperature, '/adcu/imu/temp', 1)
         
         # CHC -------------

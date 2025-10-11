@@ -1,6 +1,7 @@
 nmea_navsat_driver:
   ros__parameters:
-    port: "/dev/ttyUSB0"
+    auto_detect: true  # 启用自动串口检测
+    port: "/dev/ttyUSB0"  # 默认端口，当自动检测失败时使用
     baud: 460800
     frame_id: "gnss"
     time_ref_source: "gps"
