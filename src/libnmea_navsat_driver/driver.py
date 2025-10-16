@@ -482,11 +482,115 @@ class Ros2NMEADriver(Node):
                     imu_msg.angular_velocity.x = math.radians(data["angular_velocity_y"])
                     imu_msg.angular_velocity.y =  math.radians(-data["angular_velocity_x"])
                     imu_msg.angular_velocity.z =  math.radians(-data["angular_velocity_z"])
+                    
+                    # 设置协方差矩阵 - 根据实际测量精度设置
+                    # 线性加速度协方差 (m/s²)²
+                    imu_msg.linear_acceleration_covariance[0] = 0.1  # X轴
+                    imu_msg.linear_acceleration_covariance[4] = 0.1  # Y轴  
+                    imu_msg.linear_acceleration_covariance[8] = 0.1  # Z轴
+                    
+                    # 角速度协方差 (rad/s)²
+                    imu_msg.angular_velocity_covariance[0] = 0.01  # X轴
+                    imu_msg.angular_velocity_covariance[4] = 0.01  # Y轴
+                    imu_msg.angular_velocity_covariance[8] = 0.01  # Z轴
+                    
+                    # 姿态协方差 (rad)²
+                    imu_msg.orientation_covariance[0] = 0.1   # X轴
+                    imu_msg.orientation_covariance[4] = 0.1   # Y轴
+                    imu_msg.orientation_covariance[8] = 0.1   # Z轴
 
                     self.imu_pub.publish(imu_msg)
 
             except UnicodeDecodeError as err:
                 self.get_logger().warn("UnicodeDecodeError: {0}".format(err))
+                
+        elif 'PQTMPVT' in parsed_sentence:
+            # PQTMPVT是来自GPSD的PVT数据
+            # 包含：位置、速度、时间、质量等信息
+
+            data = parsed_sentence['PQTMPVT']
+            try:
+                # 发布GPS位置数据
+                if self.fix_pub.get_subscription_count() > 0:
+                    current_fix = NavSatFix()
+                    current_fix.header.stamp = self.get_clock().now().to_msg()
+                    current_fix.header.frame_id = frame_id
+                    
+                    # 根据质量设置状态
+                    quality = data['quality']
+                    if quality == 0:
+                        current_fix.status.status = NavSatStatus.STATUS_NO_FIX
+                        current_fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
+                    elif quality in [1, 2, 3]:
+                        current_fix.status.status = NavSatStatus.STATUS_FIX
+                        current_fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_APPROXIMATED
+                    elif quality in [4, 5]:
+                        current_fix.status.status = NavSatStatus.STATUS_GBAS_FIX
+                        current_fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_APPROXIMATED
+                    else:
+                        current_fix.status.status = NavSatStatus.STATUS_NO_FIX
+                        current_fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
+                    
+                    current_fix.status.service = NavSatStatus.SERVICE_GPS
+                    current_fix.latitude = data['lat']
+                    current_fix.longitude = data['lon']
+                    current_fix.altitude = data['alt']
+                    
+                    # 设置协方差矩阵
+                    hdop = data['hdop']
+                    if not math.isnan(hdop) and hdop > 0:
+                        # 使用HDOP计算位置协方差
+                        position_std = hdop * 2.0  # 假设2米的基础精度
+                        current_fix.position_covariance[0] = (position_std * math.cos(math.radians(data['lat']))) ** 2
+                        current_fix.position_covariance[4] = position_std ** 2
+                        current_fix.position_covariance[8] = (position_std * 2) ** 2
+                    
+                    self.fix_pub.publish(current_fix)
+                
+                # 发布速度数据
+                if self.vel_pub.get_subscription_count() > 0:
+                    current_vel = TwistStamped()
+                    current_vel.header.stamp = self.get_clock().now().to_msg()
+                    current_vel.header.frame_id = frame_id
+                    current_vel.twist.linear.x = data['vel_e']  # 东向速度
+                    current_vel.twist.linear.y = data['vel_n']  # 北向速度
+                    current_vel.twist.linear.z = data['vel_d']  # 天向速度
+                    self.vel_pub.publish(current_vel)
+                
+                # 发布航向数据
+                if self.heading_pub.get_subscription_count() > 0:
+                    current_heading = QuaternionStamped()
+                    current_heading.header.stamp = self.get_clock().now().to_msg()
+                    current_heading.header.frame_id = frame_id
+                    q = quaternion_from_euler(0, 0, math.radians(data['heading']))
+                    current_heading.quaternion.x = q[0]
+                    current_heading.quaternion.y = q[1]
+                    current_heading.quaternion.z = q[2]
+                    current_heading.quaternion.w = q[3]
+                    self.heading_pub.publish(current_heading)
+                
+                # 发布时间参考
+                if self.time_ref_pub.get_subscription_count() > 0:
+                    current_time_ref = TimeReference()
+                    current_time_ref.header.stamp = self.get_clock().now().to_msg()
+                    current_time_ref.header.frame_id = frame_id
+                    current_time_ref.source = self.time_ref_source
+                    
+                    # 将GPS时间转换为UTC时间
+                    if not math.isnan(data['tow']):
+                        # GPS时间 = GPS周数 * 604800 + TOW
+                        # 这里简化处理，使用当前时间
+                        current_time_ref.time_ref = self.get_clock().now().to_msg()
+                        self.time_ref_pub.publish(current_time_ref)
+                
+                # 发布卫星数量信息（如果有订阅者）
+                if hasattr(self, 'pub_antenna0') and self.pub_antenna0.get_subscription_count() > 0:
+                    antenna0_count_msg = UInt8()
+                    antenna0_count_msg.data = data['num_sat_used']
+                    self.pub_antenna0.publish(antenna0_count_msg)
+
+            except Exception as err:
+                self.get_logger().warn("Error processing PQTMPVT: {0}".format(err))
                 
         else:
             return False
