@@ -67,7 +67,14 @@ def generate_launch_description():
         parameters=[config_file, {
             'timeout': LaunchConfiguration('timeout'),
             'auto_detect': LaunchConfiguration('auto_detect'),
-        }]
+        }],
+        remappings=[
+            ('fix', '/sensing/gnss/adcu/fix'),
+            ('chc/imu', '/sensing/gnss/adcu/imu'),
+            ('chc/heading', 'adcu/heading'),
+            ('vel', 'adcu/vel'),
+            ('time_reference', 'adcu/time_reference'),
+        ],
     )
 
     return LaunchDescription([
