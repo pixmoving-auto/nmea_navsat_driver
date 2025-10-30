@@ -203,57 +203,124 @@ class Ros2NMEADriver(Node):
         else:
             current_time_ref.source = frame_id
 
-        if not self.use_RMC and 'GGA' in parsed_sentence:
-            current_fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_APPROXIMATED
+        # 原GGA数据处理代码 (已注释，替换为DRPVA)
+        # if not self.use_RMC and 'GGA' in parsed_sentence:
+        #     current_fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_APPROXIMATED
+        #
+        #     data = parsed_sentence['GGA']
+        #     fix_type = data['fix_type']
+        #     if not (fix_type in self.gps_qualities):
+        #         fix_type = -1
+        #     gps_qual = self.gps_qualities[fix_type]
+        #     default_epe = gps_qual[0]
+        #     current_fix.status.status = gps_qual[1]
+        #     current_fix.position_covariance_type = gps_qual[2]
+        #     if current_fix.status.status > 0:
+        #         self.valid_fix = True
+        #     else:
+        #         self.valid_fix = False
+        #
+        #     current_fix.status.service = NavSatStatus.SERVICE_GPS
+        #     latitude = data['latitude']
+        #     if data['latitude_direction'] == 'S':
+        #         latitude = -latitude
+        #     current_fix.latitude = latitude
+        #
+        #     longitude = data['longitude']
+        #     if data['longitude_direction'] == 'W':
+        #         longitude = -longitude
+        #     current_fix.longitude = longitude
+        #
+        #     # Altitude is above ellipsoid, so adjust for mean-sea-level
+        #     # altitude = data['altitude'] + data['mean_sea_level']
+        #     altitude = data['altitude']
+        #     current_fix.altitude = altitude
+        #
+        #     # use default epe std_dev unless we've received a GST sentence with epes
+        #     if not self.using_receiver_epe or math.isnan(self.lon_std_dev):
+        #         self.lon_std_dev = default_epe
+        #     if not self.using_receiver_epe or math.isnan(self.lat_std_dev):
+        #         self.lat_std_dev = default_epe
+        #     if not self.using_receiver_epe or math.isnan(self.alt_std_dev):
+        #         self.alt_std_dev = default_epe * 2
+        #
+        #     hdop = data['hdop']
+        #     current_fix.position_covariance[0] = (hdop * self.lon_std_dev) ** 2
+        #     current_fix.position_covariance[4] = (hdop * self.lat_std_dev) ** 2
+        #     current_fix.position_covariance[8] = (2 * hdop * self.alt_std_dev) ** 2  # FIXME
+        #
+        #     self.fix_pub.publish(current_fix)
+        #
+        #     if not math.isnan(data['utc_time']):
+        #         current_time_ref.time_ref = rclpy.time.Time(seconds=data['utc_time']).to_msg()
+        #         self.last_valid_fix_time = current_time_ref
+        #         self.time_ref_pub.publish(current_time_ref)
 
-            data = parsed_sentence['GGA']
-            fix_type = data['fix_type']
-            if not (fix_type in self.gps_qualities):
-                fix_type = -1
-            gps_qual = self.gps_qualities[fix_type]
-            default_epe = gps_qual[0]
-            current_fix.status.status = gps_qual[1]
-            current_fix.position_covariance_type = gps_qual[2]
-            if current_fix.status.status > 0:
+        # DR PVA数据处理 (PQTMDRPVA) - 替换原GGA处理
+        # 数据格式: $PQTMDRPVA,1,1534581,062343.400,2,26.74837099,106.66894064,1270.464,0.000,0.557,0.268,0.637,0.618,118.013,11.383,248.324*5B
+        if not self.use_RMC and 'TMDRPVA' in parsed_sentence:
+            current_fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
+
+            data = parsed_sentence['TMDRPVA']
+            
+            # 根据quality设置状态 (0=无定位, 1=GPS, 2=DGPS, 4=RTK Fixed, 5=RTK Float)
+            quality = data['quality']
+            if quality == 0:
+                current_fix.status.status = NavSatStatus.STATUS_NO_FIX
+                self.valid_fix = False
+            elif quality == 1:
+                current_fix.status.status = NavSatStatus.STATUS_FIX
+                self.valid_fix = True
+            elif quality == 2:
+                current_fix.status.status = NavSatStatus.STATUS_SBAS_FIX
+                self.valid_fix = True
+            elif quality in [4, 5]:
+                current_fix.status.status = NavSatStatus.STATUS_GBAS_FIX
                 self.valid_fix = True
             else:
-                self.valid_fix = False
+                current_fix.status.status = NavSatStatus.STATUS_FIX
+                self.valid_fix = True
 
             current_fix.status.service = NavSatStatus.SERVICE_GPS
-            latitude = data['latitude']
-            if data['latitude_direction'] == 'S':
-                latitude = -latitude
-            current_fix.latitude = latitude
+            
+            # 直接使用度数格式的经纬度 (DRPVA已经是度数格式，无需转换)
+            current_fix.latitude = data['latitude']
+            current_fix.longitude = data['longitude']
+            current_fix.altitude = data['altitude']
 
-            longitude = data['longitude']
-            if data['longitude_direction'] == 'W':
-                longitude = -longitude
-            current_fix.longitude = longitude
-
-            # Altitude is above ellipsoid, so adjust for mean-sea-level
-            # altitude = data['altitude'] + data['mean_sea_level']
-            altitude = data['altitude']
-            current_fix.altitude = altitude
-
-            # use default epe std_dev unless we've received a GST sentence with epes
-            if not self.using_receiver_epe or math.isnan(self.lon_std_dev):
-                self.lon_std_dev = default_epe
-            if not self.using_receiver_epe or math.isnan(self.lat_std_dev):
-                self.lat_std_dev = default_epe
-            if not self.using_receiver_epe or math.isnan(self.alt_std_dev):
-                self.alt_std_dev = default_epe * 2
-
-            hdop = data['hdop']
-            current_fix.position_covariance[0] = (hdop * self.lon_std_dev) ** 2
-            current_fix.position_covariance[4] = (hdop * self.lat_std_dev) ** 2
-            current_fix.position_covariance[8] = (2 * hdop * self.alt_std_dev) ** 2  # FIXME
+            # 使用DRPVA提供的标准差数据
+            self.lat_std_dev = data['lat_std_dev']
+            self.lon_std_dev = data['lon_std_dev']
+            self.alt_std_dev = data['alt_std_dev']
+            
+            # 设置协方差矩阵 (使用标准差的平方)
+            current_fix.position_covariance[0] = self.lon_std_dev ** 2
+            current_fix.position_covariance[4] = self.lat_std_dev ** 2
+            current_fix.position_covariance[8] = self.alt_std_dev ** 2
 
             self.fix_pub.publish(current_fix)
 
+            # 发布UTC时间参考
             if not math.isnan(data['utc_time']):
-                current_time_ref.time_ref = rclpy.time.Time(seconds=data['utc_time']).to_msg()
+                # 将UTC时间从HHMMSS.SSS格式转换为秒
+                utc_time = data['utc_time']
+                hours = int(utc_time / 10000)
+                minutes = int((utc_time - hours * 10000) / 100)
+                seconds = utc_time - hours * 10000 - minutes * 100
+                
+                import time
+                import calendar
+                utc_struct = time.gmtime()
+                utc_list = list(utc_struct)
+                utc_list[3] = hours
+                utc_list[4] = minutes
+                utc_list[5] = int(seconds)
+                unix_time = calendar.timegm(tuple(utc_list)) + (seconds - int(seconds))
+                
+                current_time_ref.time_ref = rclpy.time.Time(seconds=unix_time).to_msg()
                 self.last_valid_fix_time = current_time_ref
                 self.time_ref_pub.publish(current_time_ref)
+        
 
         elif not self.use_RMC and 'VTG' in parsed_sentence:
             data = parsed_sentence['VTG']
@@ -504,11 +571,11 @@ class Ros2NMEADriver(Node):
             except UnicodeDecodeError as err:
                 self.get_logger().warn("UnicodeDecodeError: {0}".format(err))
                 
-        elif 'PQTMPVT' in parsed_sentence:
+        elif 'TMPVT' in parsed_sentence:
             # PQTMPVT是来自GPSD的PVT数据
             # 包含：位置、速度、时间、质量等信息
 
-            data = parsed_sentence['PQTMPVT']
+            data = parsed_sentence['TMPVT']
             try:
                 # 发布GPS位置数据
                 if self.fix_pub.get_subscription_count() > 0:

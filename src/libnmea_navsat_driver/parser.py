@@ -184,6 +184,7 @@ parse_maps = {
     ], 
 
     # ADCU温度和加速度计数据
+    # 原始前缀类似 $PQTMSENMSG，去除前缀后为 TMSENMSG
     "TMSENMSG": [
         ("timestamp", int, 2),                      # 启动开始计算时间戳(秒)
         ("temp", safe_float, 3),                    # 温度（单位：°C）
@@ -195,8 +196,8 @@ parse_maps = {
         ("linear_acceleration_z", safe_float_except_star, 9),   # 线性加速度 Z 轴
     ],
     
-    # PQTMPVT格式 - 来自GPSD的PVT数据
-    "PQTMPVT": [
+    # TMPVT格式 - 来自GPSD的PVT数据 ($PQTMPVT → TMPVT)
+    "TMPVT": [
         ("msg_ver", int, 1),                        # 消息版本
         ("tow", safe_float, 2),                     # GPS时间周内秒数
         ("date", int, 3),                           # 日期 (DDMMYY)
@@ -216,6 +217,26 @@ parse_maps = {
         ("heading", safe_float, 17),                # 航向角 (度)
         ("hdop", safe_float, 18),                   # 水平精度因子
         ("pdop", safe_float_except_star, 19),       # 位置精度因子
+    ],
+    
+    # TMDRPVA格式 - DR PVA数据 ($PQTMDRPVA → TMDRPVA)
+    # 示例: $PQTMDRPVA,1,1534581,062343.400,2,26.74837099,106.66894064,1270.464,0.000,0.557,0.268,0.637,0.618,118.013,11.383,248.324*5B
+    "TMDRPVA": [
+        ("msg_ver", int, 1),                        # 消息版本
+        ("tow", safe_float, 2),                     # GPS时间周内秒数
+        ("utc_time", safe_float, 3),                # UTC时间 (HHMMSS.SSS)
+        ("quality", int, 4),                        # 定位质量
+        ("latitude", safe_float, 5),                # 纬度 (度)
+        ("longitude", safe_float, 6),               # 经度 (度)
+        ("altitude", safe_float, 7),                # 高度 (米)
+        ("vel_horiz", safe_float, 8),               # 水平速度 (m/s)
+        ("lat_std_dev", safe_float, 9),             # 纬度标准差 (米)
+        ("lon_std_dev", safe_float, 10),            # 经度标准差 (米)
+        ("alt_std_dev", safe_float, 11),            # 高度标准差 (米)
+        ("vel_std_dev", safe_float, 12),            # 速度标准差 (m/s)
+        ("heading", safe_float, 13),                # 航向角 (度)
+        ("pitch", safe_float, 14),                  # 俯仰角 (度)
+        ("roll", safe_float_except_star, 15),       # 横滚角 (度)
     ],
 }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 快速GPSD测试脚本 - 简化版本
-用于快速查看GNSS和IMU数据
+用于快速查看GNSS和IMU数据、底盘车速数据等
 """
 
 import subprocess
@@ -31,22 +31,34 @@ def main():
         
         while True:
             line = process.stdout.readline()
-            if line:
-                line = line.strip()
-                
-                # 只显示重要的数据
+            if not line:
+                continue
+            line = line.strip()
+
+            # 始终输出GPSD的原始NMEA/PQTM行
+            print(line)
+
+            # 同时对常见语句做醒目标注（不影响原始输出）
+            try:
                 if line.startswith('$GNGGA'):
-                    print(f"📍 GPS位置: {line}")
+                    print(f"📍 GGA位置↑")
                 elif line.startswith('$GNRMC'):
-                    print(f"🧭 GPS导航: {line}")
+                    print(f"🧭 RMC导航↑")
                 elif line.startswith('$PQTMPVT'):
-                    print(f"🛰️  PVT数据: {line}")
+                    print(f"🛰️  PVT数据↑")
                 elif line.startswith('$PQTMSENMSG'):
-                    print(f"📊 IMU数据: {line}")
+                    print(f"📊 IMU数据↑")
                 elif line.startswith('$GNGLL'):
-                    print(f"🌍 位置信息: {line}")
+                    print(f"🌍 GLL位置↑")
                 elif line.startswith('$GNVTG'):
-                    print(f"🚗 速度信息: {line}")
+                    print(f"🚗 VTG速度信息↑")
+                elif line.startswith('$PQTMDRPVA'):
+                    print(f"🔍 DRPVA数据↑")
+                elif line.startswith('$PQTMVEHMSG'):
+                    print(f"🚗 VEHMSG底盘车速↑")
+            except Exception:
+                # 保障打印不中断
+                pass
     
     except FileNotFoundError:
         print("错误: 找不到gpspipe命令。请确保已安装gpsd工具。")
