@@ -220,23 +220,24 @@ parse_maps = {
     ],
     
     # TMDRPVA格式 - DR PVA数据 ($PQTMDRPVA → TMDRPVA)
-    # 示例: $PQTMDRPVA,1,1534581,062343.400,2,26.74837099,106.66894064,1270.464,0.000,0.557,0.268,0.637,0.618,118.013,11.383,248.324*5B
+    # 按照设备说明书字段顺序：
+    # $PQTMDRPVA,<MsgVer>,<Timestamp>,<Time>,<SolType>,<Lat>,<Lon>,<Alt>,<Sep>,<VelN>,<VelE>,<VelD>,<Spd>,<Roll>,<Pitch>,<Heading>*cs
     "TMDRPVA": [
-        ("msg_ver", int, 1),                        # 消息版本
-        ("tow", safe_float, 2),                     # GPS时间周内秒数
-        ("utc_time", safe_float, 3),                # UTC时间 (HHMMSS.SSS)
-        ("quality", int, 4),                        # 定位质量
-        ("latitude", safe_float, 5),                # 纬度 (度)
-        ("longitude", safe_float, 6),               # 经度 (度)
-        ("altitude", safe_float, 7),                # 高度 (米)
-        ("vel_horiz", safe_float, 8),               # 水平速度 (m/s)
-        ("lat_std_dev", safe_float, 9),             # 纬度标准差 (米)
-        ("lon_std_dev", safe_float, 10),            # 经度标准差 (米)
-        ("alt_std_dev", safe_float, 11),            # 高度标准差 (米)
-        ("vel_std_dev", safe_float, 12),            # 速度标准差 (m/s)
-        ("heading", safe_float, 13),                # 航向角 (度)
-        ("pitch", safe_float, 14),                  # 俯仰角 (度)
-        ("roll", safe_float_except_star, 15),       # 横滚角 (度)
+        ("msg_ver", int, 1),                         # 语句版本
+        ("timestamp", int, 2),                       # 自启动以来毫秒
+        ("utc_time", safe_float, 3),                 # UTC时间 (HHMMSS.SSS)
+        ("quality", int, 4),                         # 定位类型
+        ("latitude", safe_float, 5),                 # 纬度 (度)
+        ("longitude", safe_float, 6),                # 经度 (度)
+        ("altitude", safe_float, 7),                 # 高度 (米)
+        ("sep", safe_float, 8),                      # 大地水准面分离 (米)
+        ("vel_n", safe_float, 9),                    # 北向速度 (m/s)
+        ("vel_e", safe_float, 10),                   # 东向速度 (m/s)
+        ("vel_d", safe_float, 11),                   # 下向速度 (m/s)
+        ("spd", safe_float, 12),                     # 对地速度 (m/s)
+        ("roll", safe_float, 13),                    # 横滚角 (度)
+        ("pitch", safe_float, 14),                   # 俯仰角 (度)
+        ("heading", safe_float_except_star, 15),     # 航向角 (度)
     ],
 }
 
