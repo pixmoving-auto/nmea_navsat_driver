@@ -1,0 +1,22 @@
+# GPSD驱动配置文件
+# 用于配置从GPSD获取NMEA数据的参数
+
+nmea_navsat_driver:
+  ros__parameters:
+    # 基本参数
+    frame_id: "gnss"                    # GPS数据的frame_id
+    tf_prefix: ""                       # TF前缀
+    timeout: 2.0                        # GPSD连接超时时间(秒)
+    time_ref_source: "gps"              # 时间参考源
+    auto_detect: true                   # 启用自动GPSD检测
+    
+    # RMC消息使用
+    useRMC: false                       # 是否使用RMC消息进行位置修复
+    
+    # 位置精度估计 (Estimated Position Error)
+    epe_quality0: 1000000.0            # 质量0 (无效) 的估计位置误差(米)
+    epe_quality1: 4.0                  # 质量1 (SPS) 的估计位置误差(米)
+    epe_quality2: 0.1                  # 质量2 (DGPS) 的估计位置误差(米)
+    epe_quality4: 0.02                 # 质量4 (RTK Fix) 的估计位置误差(米)
+    epe_quality5: 4.0                  # 质量5 (RTK Float) 的估计位置误差(米)
+    epe_quality9: 3.0                  # 质量9 (WAAS) 的估计位置误差(米)

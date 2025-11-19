@@ -64,11 +64,16 @@ def convert_latitude(field):
 
 
 def convert_longitude(field):
-    degree = safe_float(field[-len(field):-11])
-    minute = safe_float(field[-11:-1])
-    if(degree < 0):
-        minute = -minute
-    return degree + minute / 60.0
+    # NMEA longitude is formatted as dddmm.mmmm
+    # Convert to decimal degrees without applying the sign.
+    # Sign will be handled by the E/W direction field in the caller.
+    if not field:
+        return safe_float(field)
+    degrees_part = field[0:3]
+    minutes_part = field[3:]
+    degrees = safe_float(degrees_part)
+    minutes = safe_float(minutes_part)
+    return degrees + minutes / 60.0
 
 
 def convert_time(nmea_utc):
@@ -178,8 +183,10 @@ parse_maps = {
         ("age", int, 22), # 差分延时
     ], 
 
+    # ADCU温度和加速度计数据
+    # 原始前缀类似 $PQTMSENMSG，去除前缀后为 TMSENMSG
     "TMSENMSG": [
-        ("timestamp", int, 2),                      # 时间戳
+        ("timestamp", int, 2),                      # 启动开始计算时间戳(秒)
         ("temp", safe_float, 3),                    # 温度（单位：°C）
         ("angular_velocity_x", safe_float, 5),      # 角速度 X 轴   （硬件 y -> 逻辑 x）
         ("angular_velocity_y", safe_float, 4),      # 角速度 Y 轴   （硬件 x -> 逻辑 y）
@@ -188,13 +195,57 @@ parse_maps = {
         ("linear_acceleration_y", safe_float, 7),   # 线性加速度 Y 轴  （硬件 x -> 逻辑 y）
         ("linear_acceleration_z", safe_float_except_star, 9),   # 线性加速度 Z 轴
     ],
+    
+    # TMPVT格式 - 来自GPSD的PVT数据 ($PQTMPVT → TMPVT)
+    "TMPVT": [
+        ("msg_ver", int, 1),                        # 消息版本
+        ("tow", safe_float, 2),                     # GPS时间周内秒数
+        ("date", int, 3),                           # 日期 (DDMMYY)
+        ("time", safe_float, 4),                    # 时间 (HHMMSS.SSS)
+        ("quality", int, 5),                        # GPS定位质量
+        ("fix_mode", int, 6),                       # 定位模式
+        ("num_sat_used", int, 7),                   # 使用的卫星数
+        ("leap_s", int, 8),                         # 闰秒
+        ("lat", safe_float, 9),                     # 纬度 (度)
+        ("lon", safe_float, 10),                    # 经度 (度)
+        ("alt", safe_float, 11),                    # 高度 (米)
+        ("sep", safe_float, 12),                    # 大地水准面分离 (米)
+        ("vel_n", safe_float, 13),                  # 北向速度 (m/s)
+        ("vel_e", safe_float, 14),                  # 东向速度 (m/s)
+        ("vel_d", safe_float, 15),                  # 天向速度 (m/s)
+        ("spd", safe_float, 16),                    # 地面速度 (m/s)
+        ("heading", safe_float, 17),                # 航向角 (度)
+        ("hdop", safe_float, 18),                   # 水平精度因子
+        ("pdop", safe_float_except_star, 19),       # 位置精度因子
+    ],
+    
+    # TMDRPVA格式 - DR PVA数据 ($PQTMDRPVA → TMDRPVA)
+    # 按照设备说明书字段顺序：
+    # $PQTMDRPVA,<MsgVer>,<Timestamp>,<Time>,<SolType>,<Lat>,<Lon>,<Alt>,<Sep>,<VelN>,<VelE>,<VelD>,<Spd>,<Roll>,<Pitch>,<Heading>*cs
+    "TMDRPVA": [
+        ("msg_ver", int, 1),                         # 语句版本
+        ("timestamp", int, 2),                       # 自启动以来毫秒
+        ("utc_time", safe_float, 3),                 # UTC时间 (HHMMSS.SSS)
+        ("quality", int, 4),                         # 定位类型
+        ("latitude", safe_float, 5),                 # 纬度 (度)
+        ("longitude", safe_float, 6),                # 经度 (度)
+        ("altitude", safe_float, 7),                 # 高度 (米)
+        ("sep", safe_float, 8),                      # 大地水准面分离 (米)
+        ("vel_n", safe_float, 9),                    # 北向速度 (m/s)
+        ("vel_e", safe_float, 10),                   # 东向速度 (m/s)
+        ("vel_d", safe_float, 11),                   # 下向速度 (m/s)
+        ("spd", safe_float, 12),                     # 对地速度 (m/s)
+        ("roll", safe_float, 13),                    # 横滚角 (度)
+        ("pitch", safe_float, 14),                   # 俯仰角 (度)
+        ("heading", safe_float_except_star, 15),     # 航向角 (度)
+    ],
 }
 
 
 def parse_nmea_sentence(nmea_sentence):
     # Check for a valid nmea sentence
 
-    if not re.match(r'(^\$GP|^\$GN|^\$GL|^\$IN|^\$PQ).*\*[0-9A-Fa-f]{2}$', nmea_sentence):
+    if not re.match(r'(^\$GP|^\$GN|^\$GL|^\$IN|^\$PQ|^\$CHC).*\*[0-9A-Fa-f]{2}$', nmea_sentence):
         logger.debug("Regex didn't match, sentence not valid NMEA? Sentence was: %s"
                      % repr(nmea_sentence))
         return False
