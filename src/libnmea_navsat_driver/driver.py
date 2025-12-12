@@ -93,19 +93,19 @@ class Ros2NMEADriver(Node):
         self.temperature_pub = self.create_publisher(Temperature, '/acu/imu/temp', 10)
         
         # CHC -------------
-        self.imu_pub = self.create_publisher(Imu, 'chc/imu', 10)
-        self.pub_pitch = self.create_publisher(Float32, 'chc/pitch', 2)
-        self.pub_heading = self.create_publisher(Float32, 'chc/heading', 2)
-        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, 'chc/pose', 10)
-        self.ublox_navpvt_pub = self.create_publisher(NavPVT, "chc/navpvt", 10)
+        self.imu_pub = self.create_publisher(Imu, 'imu', 10)
+        self.pub_pitch = self.create_publisher(Float32, 'pitch', 2)
+        self.pub_heading = self.create_publisher(Float32, 'heading', 2)
+        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, 'pose', 10)
+        self.ublox_navpvt_pub = self.create_publisher(NavPVT, "navpvt", 10)
         self.pub_orientation = self.create_publisher(GnssInsOrientationStamped, '/autoware_orientation', 2)
-        self.pub_antenna0 = self.create_publisher(UInt8, 'chc/main_antenna_satellite_count', 2)  # 主天线 1 卫星数
-        self.pub_antenna1 = self.create_publisher(UInt8, 'chc/auxiliary_antenna_satellite_count', 2)  # # 副天线 2 卫星数
+        self.pub_antenna0 = self.create_publisher(UInt8, 'main_antenna_satellite_count', 2)  # 主天线 1 卫星数
+        self.pub_antenna1 = self.create_publisher(UInt8, 'auxiliary_antenna_satellite_count', 2)  # # 副天线 2 卫星数
         # CHC -------------
         
         self.fix_pub = self.create_publisher(NavSatFix, 'fix', 10)
         self.vel_pub = self.create_publisher(TwistStamped, 'vel', 10)
-        self.heading_pub = self.create_publisher(QuaternionStamped, 'heading', 10)
+        self.heading_pub = self.create_publisher(QuaternionStamped, 'hdt_heading', 10)
         self.time_ref_pub = self.create_publisher(TimeReference, 'time_reference', 10)
 
         self.time_ref_source = self.declare_parameter('time_ref_source', 'gps').value
