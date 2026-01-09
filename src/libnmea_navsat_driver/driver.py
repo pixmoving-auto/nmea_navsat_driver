@@ -146,6 +146,30 @@ class Ros2NMEADriver(Node):
         self.lat_std_dev = float("nan")
         self.alt_std_dev = float("nan")
 
+        # pose covariance 
+        self.timeCovarience = np.ones(5, dtype=np.float64) * -1.0  # [flag, time, lat_cov, lon_cov, alt_cov]
+        self.covariance_map = {
+            # 不定向模式 - 方差极大（相当于不可信）
+            0: 1.00,   # 不定位不定向 - 完全不可信
+            6: 0.50,   # 单点定位不定向 
+            7: 0.40,   # 伪距差分定位不定向
+            8: 0.30,   # RTK稳定解定位不定向
+            9: 0.35,   # RTK浮点解定位不定向
+            
+            # 定向模式 - 根据定位精度分级
+            1: 0.08,   # 单点定位定向 - 普通GNSS定位精度
+            2: 0.03,   # 伪距差分定位定向 - 分米级精度
+            3: 0.15,   # 组合推算 - 推算模式精度较差
+            4: 0.001,  # RTK稳定解定位定向 - 厘米级精度
+            5: 0.005,  # RTK浮点解定位定向 - 亚米级精度
+        }
+        self.multiplier_map = {
+            0: 5.0,    # 初始化 - 极不稳定
+            1: 1.0,    # 卫导模式 - 标准GNSS
+            2: 0.3,    # 组合导航模式 - 显著提高稳定性
+            3: 2.5,    # 纯惯导模式 - 随时间发散严重
+        }
+
         """Format for this dictionary is the fix type from a GGA message as the key, with
         each entry containing a tuple consisting of a default estimated
         position error, a NavSatStatus value, and a NavSatFix covariance value."""
@@ -193,6 +217,17 @@ class Ros2NMEADriver(Node):
                 NavSatFix.COVARIANCE_TYPE_APPROXIMATED
             ]
         }
+    
+    def get_yaw_covariance(self, fix_type):
+        satellite_status = int(fix_type/10)
+        system_status =  int(fix_type)%10
+
+        # 获取基础协方差和系统乘子
+        base_cov = self.covariance_map[satellite_status]
+        sys_mult = self.multiplier_map[system_status]
+        final_covariance = base_cov * sys_mult  # 计算最终协方差
+        final_covariance = max(final_covariance, 1e-6)  # 添加噪声防止零方差
+        return final_covariance
 
     # Returns True if we successfully did something with the passed in
     # nmea_string
@@ -273,6 +308,12 @@ class Ros2NMEADriver(Node):
                 current_time_ref.time_ref = rclpy.time.Time(seconds=data['utc_time']).to_msg()
                 self.last_valid_fix_time = current_time_ref
                 self.time_ref_pub.publish(current_time_ref)
+
+                self.timeCovarience[0] = 1.0    # record the time of the fix, and position covariance
+                self.timeCovarience[1] = float(data['utc_time']) 
+                self.timeCovarience[2] = current_fix.position_covariance[0]
+                self.timeCovarience[3] = current_fix.position_covariance[4]
+                self.timeCovarience[4] = current_fix.position_covariance[8]
 
         elif not self.use_RMC and 'VTG' in parsed_sentence:
             data = parsed_sentence['VTG']
@@ -428,6 +469,12 @@ class Ros2NMEADriver(Node):
                     pose_msg.pose.pose.orientation.y = qy
                     pose_msg.pose.pose.orientation.z = qz
                     pose_msg.pose.pose.orientation.w = qw
+
+                    # 每帧 gpgga的协方差矩阵，只更新到pose一次，   self.timeCovarience[0]用于判断是否是新的一次gga
+                    if abs(math.modf(data['gps_second']- self.timeCovarience[1])[0] ) < 0.05 and self.timeCovarience[0] >0.5:   
+                        self.timeCovarience[0] = 0.0
+                        pose_msg.pose.covariance[0], pose_msg.pose.covariance[7], pose_msg.pose.covariance[14] = coor_conv.lla_cov_to_ecef([self.timeCovarience[2], self.timeCovarience[3], self.timeCovarience[4]], data['longitude'], data['latitude'], data['altitude'])
+                        pose_msg.pose.covariance[35] = self.get_yaw_covariance(data['fix_valid'])
                     
                     self.pose_pub.publish(pose_msg)
                 
