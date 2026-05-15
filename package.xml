@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format2.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="2">
-    <name>nmea_navsat_driver</name>
+    <name>nmea_udp_navsat_driver_cpp</name>
     <version>2.0.1</version>
     <description>
         Package to parse NMEA strings and publish a very simple GPS message. Does not
@@ -12,22 +12,21 @@
 
     <license>BSD</license>
 
-    <url type="website">http://ros.org/wiki/nmea_navsat_driver</url>
-
     <author email="eric@ericperko.com">Eric Perko</author>
     <author>Steven Martin</author>
 
-    <exec_depend>geometry_msgs</exec_depend>
     <exec_depend>nmea_msgs</exec_depend>
     <exec_depend>rclpy</exec_depend>
-    <exec_depend>sensor_msgs</exec_depend>
-    <exec_depend>python3-numpy</exec_depend>
-    <exec_depend>python3-serial</exec_depend>
     <exec_depend>tf_transformations</exec_depend>
+    <depend>rclcpp</depend>
+    <depend>rclcpp_components</depend>
+    <depend>sensor_msgs</depend>
+    <depend>geometry_msgs</depend>
 
-    <test_depend>python3-pytest</test_depend>
-
+    <build_depend>boost</build_depend>
+    <exec_depend>boost</exec_depend>
     <export>
-        <build_type>ament_python</build_type>
+        <build_type>ament_cmake</build_type>
     </export>
+
 </package>
