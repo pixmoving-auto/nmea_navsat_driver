@@ -32,6 +32,7 @@
 
 import socket
 import sys
+import time
 
 import rclpy
 
@@ -47,6 +48,8 @@ def main(args=None):
         local_port = driver.declare_parameter('port', 10110).value
         buffer_size = driver.declare_parameter('buffer_size', 4096).value
         timeout = driver.declare_parameter('timeout_sec', 2).value
+        # protocol: udp=绑定本机端口接收(UDP惯导), tcp=主动连接惯导设备(TCP惯导)
+        protocol = driver.declare_parameter('protocol', 'udp').value
     except KeyError as e:
         driver.get_logger().err("Parameter %s not found" % e)
         sys.exit(1)
@@ -54,39 +57,55 @@ def main(args=None):
     frame_id = driver.get_frame_id()
 
     driver.get_logger().info(
-        " Using parameters ip {} port {} buffer_size {} timeout_sec {}"
-        .format(local_ip, local_port, buffer_size, timeout))
+        " Using parameters ip {} port {} buffer_size {} timeout_sec {} protocol {}"
+        .format(local_ip, local_port, buffer_size, timeout, protocol))
 
     # Connection-loop: connect and keep receiving. If receiving fails, reconnect
     while rclpy.ok():
+        socket_ = None
         try:
             # Create a socket
-            socket_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-            # Bind the socket to the port
-            socket_.bind((local_ip, local_port))
+            socket_ = socket.socket(socket.AF_INET, socket.SOCK_STREAM if protocol == 'tcp' else socket.SOCK_DGRAM)
 
             # Set timeout
             socket_.settimeout(timeout)
+
+            if protocol == 'tcp':
+                # TCP client: 主动连接惯导设备
+                socket_.connect((local_ip, local_port))
+                driver.get_logger().info("TCP connected to {}:{}".format(local_ip, local_port))
+            else:
+                # UDP: 绑定本机端口接收惯导数据
+                socket_.bind((local_ip, local_port))
         except socket.error as exc:
             driver.get_logger().error("Caught exception socket.error when setting up socket: %s" % exc)
-            socket_.settimeout(timeout)
-            # continue
+            if socket_:
+                socket_.close()
+            if protocol == 'tcp':
+                # TCP 连接失败（设备未就绪/网络中断）时自动重试，进程不退出
+                time.sleep(timeout)
+                continue
+            # UDP 绑定失败属于配置错误，退出
             sys.exit(1)
 
         # recv-loop: When we're connected, keep receiving stuff until that fails
         partial = ""
         while rclpy.ok():
             try:
-                data, remote_address = socket_.recvfrom(buffer_size)
+                if protocol == 'tcp':
+                    data = socket_.recv(buffer_size)
+                    if not data:
+                        # 对端关闭连接，触发重连
+                        raise socket.error("connection closed by peer")
+                else:
+                    data, remote_address = socket_.recvfrom(buffer_size)
 
                 # strip the data
-                # data_list = data.decode("ascii").strip().split("\n")
                 partial += data.decode("ascii")
 
                 if not partial:
                     continue
-                
+
                 # strip the data
                 lines = partial.splitlines()
                 if partial.endswith('\n'):
@@ -95,7 +114,6 @@ def main(args=None):
                 else:
                     data_list = lines[:-1]
                     partial = lines[-1]
-                    
 
                 for data in data_list:
 
@@ -106,6 +124,15 @@ def main(args=None):
                             "Value error, likely due to missing fields in the NMEA message. "
                             "Error was: %s. Please report this issue at github.com/ros-drivers/nmea_navsat_driver, "
                             "including a bag file with the NMEA sentences that caused it." % e)
+
+            except socket.timeout:
+                if protocol == 'tcp':
+                    # TCP 超时仅表示设备暂时无数据，保持连接继续等待
+                    continue
+                driver.get_logger().error("Caught exception socket.error during recvfrom: %s" % "timed out")
+                socket_.close()
+                # This will break out of the recv-loop so we start another iteration of the connection-loop
+                break
 
             except socket.error as exc:
                 driver.get_logger().error("Caught exception socket.error during recvfrom: %s" % exc)
