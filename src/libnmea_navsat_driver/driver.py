@@ -31,6 +31,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import math
+import time
 from datetime import datetime, timedelta
 
 import rclpy
@@ -41,7 +42,7 @@ from geometry_msgs.msg import TwistStamped, QuaternionStamped
 from libnmea_navsat_driver.checksum_utils import check_nmea_checksum
 from libnmea_navsat_driver import parser
 from libnmea_navsat_driver.imu_source_selector import ImuSourceSelector
-from libnmea_navsat_driver.rawimub import parse_rawimub, device_to_ros, gps_time_ns
+from libnmea_navsat_driver.rawimub import parse_rawimub, device_to_ros
 from libnmea_navsat_driver.stream_decoder import MixedStreamDecoder
 
 from std_msgs.msg import UInt8, Header 
@@ -219,15 +220,8 @@ class Ros2NMEADriver(Node):
         data = parse_rawimub(frame)
         imu_msg = Imu()
         imu_msg.header.frame_id = frame_id
-        if self.is_gps_time:
-            # Workbook: only time status 160 (FINE) guarantees synchronized time.
-            if data['time_status'] != 160:
-                return False
-            ns = gps_time_ns(data['gps_week'], data['gps_second'],
-                             self.rawimub_gps_utc_leap_seconds)
-            imu_msg.header.stamp = rclpy.time.Time(nanoseconds=ns).to_msg()
-        else:
-            imu_msg.header.stamp = timestamp if timestamp is not None else self.get_clock().now().to_msg()
+        # Without GNSS, use system time regardless of GPS status or ROS simulated time.
+        imu_msg.header.stamp = rclpy.time.Time(nanoseconds=time.time_ns()).to_msg()
         # RAWIMUB has no attitude or accuracy estimates. Do not invent either.
         imu_msg.orientation_covariance[0] = -1.0
         ax, ay, az = device_to_ros(data['acceleration'])
