@@ -51,11 +51,9 @@ def main(args=None):
         driver.get_logger().info("Successfully connected to {0} at {1}.".format(serial_port, serial_baud))
         try:
             while rclpy.ok():
-                data = GPS.readline().strip()
+                data = GPS.read(min(max(GPS.in_waiting, 1), 4096))
                 try:
-                    if isinstance(data, bytes):
-                        data = data.decode("utf-8")
-                    driver.add_sentence(data, frame_id)
+                    driver.add_bytes(data, frame_id)
                 except ValueError as e:
                     driver.get_logger().warn(
                         "Value error, likely due to missing fields in the NMEA message. Error was: %s. "

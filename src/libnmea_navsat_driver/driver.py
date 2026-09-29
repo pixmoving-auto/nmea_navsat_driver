@@ -40,6 +40,9 @@ from sensor_msgs.msg import NavSatFix, NavSatStatus, TimeReference, Temperature,
 from geometry_msgs.msg import TwistStamped, QuaternionStamped
 from libnmea_navsat_driver.checksum_utils import check_nmea_checksum
 from libnmea_navsat_driver import parser
+from libnmea_navsat_driver.imu_source_selector import ImuSourceSelector
+from libnmea_navsat_driver.rawimub import parse_rawimub, device_to_ros, gps_time_ns
+from libnmea_navsat_driver.stream_decoder import MixedStreamDecoder
 
 from std_msgs.msg import UInt8, Header 
 import numpy as np
@@ -129,7 +132,12 @@ class Ros2NMEADriver(Node):
 
         self.time_ref_source = self.declare_parameter('time_ref_source', 'gps').value
         self.is_gps_time = self.declare_parameter('is_gps_time', False).value
+        self.rawimub_gps_utc_leap_seconds = self.declare_parameter(
+            'rawimub_gps_utc_leap_seconds', 18).value
+        self.stream_decoder = MixedStreamDecoder()
         self.use_RMC = self.declare_parameter('useRMC', False).value
+        self.imu_source_selector = ImuSourceSelector(
+            self.declare_parameter('imu_source_missed_cycles', 5).value)
         self.valid_fix = False
 
         self.get_logger().info(f"是否使用GPS时间-{self.is_gps_time}")
@@ -195,6 +203,53 @@ class Ros2NMEADriver(Node):
                 NavSatFix.COVARIANCE_TYPE_APPROXIMATED
             ]
         }
+
+    def add_bytes(self, data, frame_id, timestamp=None):
+        """Receive arbitrary chunks from one mixed text/binary transport."""
+        for frame in self.stream_decoder.feed(data):
+            try:
+                if isinstance(frame, bytes):
+                    self.add_rawimub(frame, frame_id, timestamp)
+                else:
+                    self.add_sentence(frame, frame_id, timestamp)
+            except (ValueError, IndexError, OverflowError) as error:
+                self.get_logger().warn("Discarding invalid navigation frame: %s" % error)
+
+    def add_rawimub(self, frame, frame_id, timestamp=None):
+        data = parse_rawimub(frame)
+        imu_msg = Imu()
+        imu_msg.header.frame_id = frame_id
+        if self.is_gps_time:
+            # Workbook: only time status 160 (FINE) guarantees synchronized time.
+            if data['time_status'] != 160:
+                return False
+            ns = gps_time_ns(data['gps_week'], data['gps_second'],
+                             self.rawimub_gps_utc_leap_seconds)
+            imu_msg.header.stamp = rclpy.time.Time(nanoseconds=ns).to_msg()
+        else:
+            imu_msg.header.stamp = timestamp if timestamp is not None else self.get_clock().now().to_msg()
+        # RAWIMUB has no attitude or accuracy estimates. Do not invent either.
+        imu_msg.orientation_covariance[0] = -1.0
+        ax, ay, az = device_to_ros(data['acceleration'])
+        gx, gy, gz = device_to_ros(data['angular_velocity'])
+        imu_msg.linear_acceleration.x = ax
+        imu_msg.linear_acceleration.y = ay
+        imu_msg.linear_acceleration.z = az
+        imu_msg.angular_velocity.x = gx
+        imu_msg.angular_velocity.y = gy
+        imu_msg.angular_velocity.z = gz
+        self._publish_imu('rawimub', imu_msg)
+        return True
+
+    def _publish_imu(self, source, imu_msg):
+        """Arbitrate complete IMU messages using monotonic reception time."""
+        previous = self.imu_source_selector.active_source
+        allowed = self.imu_source_selector.accept(source)
+        active = self.imu_source_selector.active_source
+        if active != previous:
+            self.get_logger().info("IMU source: %s -> %s" % (previous, active))
+        if allowed and self.imu_pub.get_subscription_count() > 0:
+            self.imu_pub.publish(imu_msg)
 
     # Returns True if we successfully did something with the passed in
     # nmea_string
@@ -397,33 +452,32 @@ class Ros2NMEADriver(Node):
                     float_msg.data = data["pitch"]
                     self.pub_pitch.publish(float_msg)
                 
-                if self.imu_pub.get_subscription_count() > 0:
-                    
-                    # orientation
-                    heading = math.radians(90.0-data['heading'])
-                    pitch = math.radians(data['pitch'])
-                    roll = math.radians(data['roll'])
-                    [qx, qy, qz, qw] = get_quaternion_from_euler(roll, pitch, heading)
-                    imu_msg.orientation.x = qx
-                    imu_msg.orientation.y = qy
-                    imu_msg.orientation.z = qz
-                    imu_msg.orientation.w = qw
-                    # linear_acceleration
-                    imu_msg.linear_acceleration.x = data["linear_acceleration_y"] * 9.80665
-                    imu_msg.linear_acceleration.y = -data["linear_acceleration_x"]* 9.80665
-                    imu_msg.linear_acceleration.z = data["linear_acceleration_z"]* 9.80665
-                    # angular_velocity
-                    # angular velocity the coordinate of imu is y-front x-right z-up, 
-                    # so it has to be converted to right-handed coordinate
-                    imu_msg.angular_velocity.x = math.radians(data["angular_velocity_y"])
-                    imu_msg.angular_velocity.y =  math.radians(-data["angular_velocity_x"])
-                    imu_msg.angular_velocity.z =  math.radians(data["angular_velocity_z"])
-                    imu_msg.angular_velocity_covariance[0] = 0.01
-                    imu_msg.angular_velocity_covariance[4] = 0.01
-                    imu_msg.angular_velocity_covariance[8] = 0.01
-                    
-                    self.imu_pub.publish(imu_msg)
-                    
+
+                # orientation
+                heading = math.radians(90.0-data['heading'])
+                pitch = math.radians(data['pitch'])
+                roll = math.radians(data['roll'])
+                [qx, qy, qz, qw] = get_quaternion_from_euler(roll, pitch, heading)
+                imu_msg.orientation.x = qx
+                imu_msg.orientation.y = qy
+                imu_msg.orientation.z = qz
+                imu_msg.orientation.w = qw
+                # linear_acceleration
+                imu_msg.linear_acceleration.x = data["linear_acceleration_y"] * 9.80665
+                imu_msg.linear_acceleration.y = -data["linear_acceleration_x"]* 9.80665
+                imu_msg.linear_acceleration.z = data["linear_acceleration_z"]* 9.80665
+                # angular_velocity
+                # angular velocity the coordinate of imu is y-front x-right z-up,
+                # so it has to be converted to right-handed coordinate
+                imu_msg.angular_velocity.x = math.radians(data["angular_velocity_y"])
+                imu_msg.angular_velocity.y =  math.radians(-data["angular_velocity_x"])
+                imu_msg.angular_velocity.z =  math.radians(data["angular_velocity_z"])
+                imu_msg.angular_velocity_covariance[0] = 0.01
+                imu_msg.angular_velocity_covariance[4] = 0.01
+                imu_msg.angular_velocity_covariance[8] = 0.01
+
+                self._publish_imu('gpchc', imu_msg)
+
                 if self.pose_pub.get_subscription_count() > 0:
                     pose_msg.header = imu_msg.header
                     # pose msg
@@ -543,22 +597,21 @@ class Ros2NMEADriver(Node):
                     temperature_msg.header.frame_id = frame_id
                     temperature_msg.temperature = data["temp"]
                     self.temperature_pub.publish(temperature_msg)
-                
-                if self.imu_pub.get_subscription_count() > 0:
-                    imu_msg.header.stamp = self.get_clock().now().to_msg()
-                    imu_msg.header.frame_id = frame_id
 
-                    # linear_acceleration
-                    imu_msg.linear_acceleration.x = data["linear_acceleration_y"] * 9.80665
-                    imu_msg.linear_acceleration.y = -data["linear_acceleration_x"]* 9.80665
-                    imu_msg.linear_acceleration.z = -data["linear_acceleration_z"]* 9.80665
-                    
-                    # angular_velocity
-                    imu_msg.angular_velocity.x = math.radians(data["angular_velocity_y"])
-                    imu_msg.angular_velocity.y =  math.radians(-data["angular_velocity_x"])
-                    imu_msg.angular_velocity.z =  math.radians(-data["angular_velocity_z"])
+                imu_msg.header.stamp = self.get_clock().now().to_msg()
+                imu_msg.header.frame_id = frame_id
 
-                    self.imu_pub.publish(imu_msg)
+                # linear_acceleration
+                imu_msg.linear_acceleration.x = data["linear_acceleration_y"] * 9.80665
+                imu_msg.linear_acceleration.y = -data["linear_acceleration_x"]* 9.80665
+                imu_msg.linear_acceleration.z = -data["linear_acceleration_z"]* 9.80665
+
+                # angular_velocity
+                imu_msg.angular_velocity.x = math.radians(data["angular_velocity_y"])
+                imu_msg.angular_velocity.y =  math.radians(-data["angular_velocity_x"])
+                imu_msg.angular_velocity.z =  math.radians(-data["angular_velocity_z"])
+
+                self._publish_imu('tmsenmsg', imu_msg)
 
             except UnicodeDecodeError as err:
                 self.get_logger().warn("UnicodeDecodeError: {0}".format(err))

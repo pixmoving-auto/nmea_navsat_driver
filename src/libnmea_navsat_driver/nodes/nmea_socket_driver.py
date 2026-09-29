@@ -75,37 +75,12 @@ def main(args=None):
             sys.exit(1)
 
         # recv-loop: When we're connected, keep receiving stuff until that fails
-        partial = ""
+        driver.stream_decoder.reset()
         while rclpy.ok():
             try:
                 data, remote_address = socket_.recvfrom(buffer_size)
 
-                # strip the data
-                # data_list = data.decode("ascii").strip().split("\n")
-                partial += data.decode("ascii")
-
-                if not partial:
-                    continue
-                
-                # strip the data
-                lines = partial.splitlines()
-                if partial.endswith('\n'):
-                    data_list = lines
-                    partial = ""
-                else:
-                    data_list = lines[:-1]
-                    partial = lines[-1]
-                    
-
-                for data in data_list:
-
-                    try:
-                        driver.add_sentence(data, frame_id)
-                    except ValueError as e:
-                        driver.get_logger().warn(
-                            "Value error, likely due to missing fields in the NMEA message. "
-                            "Error was: %s. Please report this issue at github.com/ros-drivers/nmea_navsat_driver, "
-                            "including a bag file with the NMEA sentences that caused it." % e)
+                driver.add_bytes(data, frame_id)
 
             except socket.error as exc:
                 driver.get_logger().error("Caught exception socket.error during recvfrom: %s" % exc)

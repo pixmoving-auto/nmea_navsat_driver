@@ -49,30 +49,13 @@ def main(args=None):
             sys.exit(1)
 
         # recv-loop: When we're connected, keep receiving stuff until that fails
-        partial = ""
+        driver.stream_decoder.reset()
         while rclpy.ok():
             try:
-                partial += gnss_socket.recv(buffer_size).decode("ascii")
-
-                # strip the data
-                lines = partial.splitlines()
-                if partial.endswith('\n'):
-                    full_lines = lines
-                    partial = ""
-                else:
-                    full_lines = lines[:-1]
-                    partial = lines[-1]
-
-                for data in full_lines:
-                    try:
-                        if driver.add_sentence(data, frame_id):
-                            driver.get_logger().info("Received sentence: %s" % data)
-                        else:
-                            driver.get_logger().warn("Error with sentence: %s" % data)
-                    except ValueError as e:
-                        driver.get_logger().warn(
-                            "Value error, likely due to missing fields in the NMEA message. "
-                            "Error was: %s. Please report this issue to me. " % e)
+                data = gnss_socket.recv(buffer_size)
+                if not data:
+                    break  # EOF: discard partial frame and reconnect.
+                driver.add_bytes(data, frame_id)
 
             except socket.error as exc:
                 driver.get_logger().error("Caught exception socket.error when receiving: %s" % exc)
